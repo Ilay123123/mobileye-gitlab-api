@@ -14,7 +14,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 def validate_inputs(username=None, target=None, role=None, item_type=None, year=None):
     """Validate input parameters for both functions"""
     errors = []
@@ -46,7 +45,6 @@ def validate_inputs(username=None, target=None, role=None, item_type=None, year=
 
     return errors
 
-
 # Get configuration from environment variables
 GITLAB_URL = os.environ.get("GITLAB_URL", "https://gitlab.com/")
 # Make sure the URL ends with a slash
@@ -61,7 +59,6 @@ ROLE_MAPPING = {
     "maintainer": 40,
     "owner": 50  # Only for groups, not for projects
 }
-
 
 def modify_permission(username, target, role):
     """
@@ -80,6 +77,11 @@ def modify_permission(username, target, role):
     if errors:
         logger.error(f"Validation errors: {errors}")
         return {"status": "error", "errors": errors}
+
+    # Check if role is 'owner' for a project (not supported)
+    if "/" in target and role.lower() == "owner":
+        logger.error("Owner role is not supported for projects")
+        return {"status": "error", "message": "Owner role is not supported for projects"}
 
     try:
         # Get user ID
@@ -163,10 +165,8 @@ def modify_permission(username, target, role):
         logger.error(error_msg)
         return {"status": "error", "message": error_msg}
 
-
 ITEMS = ["mr", "issues"]
 VALID_YEARS = list(range(2010, datetime.now().year + 1))
-
 
 def get_items_by_year(item_type, year):
     """
@@ -177,7 +177,7 @@ def get_items_by_year(item_type, year):
         year (int or str): Year to filter by
 
     Returns:
-        list: List of items, or error information on failure
+        dict: Filtered list of items with id, title, created_at, state, web_url, or error information
     """
     # Validate inputs and return errors if any
     errors = validate_inputs(item_type=item_type, year=year)
@@ -243,10 +243,21 @@ def get_items_by_year(item_type, year):
         # If no more data, break the loop
         if not page_data:
             logger.info(f"Found {len(all_results)} {item_type} from {year}")
+            # Filter results to include only essential fields
+            filtered_results = [
+                {
+                    "id": item["id"],
+                    "title": item["title"],
+                    "created_at": item["created_at"],
+                    "state": item["state"],
+                    "web_url": item["web_url"]
+                }
+                for item in all_results
+            ]
             return {
                 "status": "success",
-                "message": f"Retrieved {len(all_results)} {item_type} from {year}",
-                "data": all_results
+                "message": f"Retrieved {len(filtered_results)} {item_type} from {year}",
+                "data": filtered_results
             }
 
         # Add data to the result list
@@ -255,7 +266,6 @@ def get_items_by_year(item_type, year):
 
         # Go to the next page
         current_page += 1
-
 
 def main():
     """Command line interface for GitLab API functions"""
@@ -288,7 +298,6 @@ def main():
         print(json.dumps(result, indent=2))
     else:
         parser.print_help()
-
 
 if __name__ == "__main__":
     main()
